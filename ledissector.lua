@@ -322,14 +322,14 @@ do
             --Slot 1 Assignment
             local slot1assign2 = getbit(buf:uint(), 3)
             local slot1assign1 = getbit(buf:uint(), 2)
-            local slot1assign = slot1assign1*2 + slot1assign2
+            local slot1assign = slot1assign1 + slot1assign2*2
             local slot1assigndesc = "............"..slot1assign2..slot1assign1.."..".." = Slot 1 Assignment : "..slotassignment[slot1assign]
             u:add(f_slot1assign, buf, slot1assigndesc)
 
             --Slot 2 Assignment
             local slot2assign2 = getbit(buf:uint(), 1)
             local slot2assign1 = getbit(buf:uint(), 0)
-            local slot2assign = slot2assign1*2 + slot2assign2
+            local slot2assign = slot2assign1 + slot2assign2*2
             local slot2assigndesc = ".............."..slot2assign2..slot2assign1.." = Slot 2 Assignment : "..slotassignment[slot2assign]
             u:add(f_slot2assign, buf, slot2assigndesc)
         end
