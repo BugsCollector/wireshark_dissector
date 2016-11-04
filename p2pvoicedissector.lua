@@ -147,7 +147,7 @@ do
 		local f2burstlen = buffer:len()
 		local t1 = t:add(p_f2burstvoice, buffer(0,f2burstlen))
 		
-		local datatype = (buffer(0,1):uint() % 0x80)
+		local datatype = bit.band((buffer(0,1):uint() % 0x80),0x3F)
 		local datatypestr = cbdts[datatype]
 
 		--SLOT NUM
