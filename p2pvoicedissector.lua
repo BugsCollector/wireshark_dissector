@@ -30,9 +30,8 @@ do
 	local f_destaddr = ProtoField.uint32("f2burstvoice.destaddr", "Destination Address", base.HEX)
 	local f_crc = ProtoField.uint16("f2burstvoice.crc", "Header CRC", base.HEX)
 	local f_auth = ProtoField.bytes("f2burstvoice.auth", "Authentication", base.HEX)
-	local f_IV = ProtoField.bytes("f2burstvoice.IV", "32-bit IV", base.HEX)
-	local f_KeyId = ProtoField.uint8("f2burstvoice.KeyId", "Key Id", base.HEX)
-	p_f2burstvoice.fields = {f_burstdatastatus, f_length, f_embsigbits, f_bustdatasize, f_burstdata, f_mfid, f_ivkey, f_destaddr,  f_voiceframe1, f_voiceframe2, f_voiceframe3, f_emblchardbits, f_emb, f_slottype, f_emblc, f_emblcmanid, f_emblctga, f_emblcsga, f_crc, f_auth, f_IV, f_KeyId}
+	local f_keyid = ProtoField.bytes("f2burstvoice.keyid", "Key ID", base.HEX)
+	p_f2burstvoice.fields = {f_burstdatastatus, f_length, f_embsigbits, f_bustdatasize, f_burstdata, f_mfid, f_ivkey, f_destaddr,  f_voiceframe1, f_voiceframe2, f_voiceframe3, f_emblchardbits, f_emb, f_slottype, f_emblc, f_emblcmanid, f_emblctga, f_emblcsga, f_crc, f_auth, f_keyid}
 
 	--Cypher  Burst data types
 	local cbdts = {
@@ -77,6 +76,8 @@ do
 
 		local length
 		local burstSize
+		
+		local f_crypto = ProtoField.uint8("f2burstvoice.CryptoFlag", "Crypto Flag", base.HEX)
 
 		---------------------------------------------------------------EMB SIG BITs definition for Voice Header and Terminator
 		local f_RSSI = ProtoField.bytes("f2burstdata.RSSI", "RSSI bit Present", base.HEX)
@@ -133,7 +134,7 @@ do
 		local f_rsvd2 = ProtoField.ubytes("f2burstvoice.rsvd2", "Reserved", base.HEX)
 		local f_gi = ProtoField.ubytes("f2burstvoice.gi", "Gi Bit", base.HEX)
 		local f_mfid = ProtoField.bytes("f2burstvoice.mfid", "Manufacturer's ID", base.DEC)
-		local f_keyid = ProtoField.bytes("f2burstvoice.keyid", "Key ID", base.HEX)
+		
 		----------------
 
 
@@ -147,7 +148,7 @@ do
 		local t1 = t:add(p_f2burstvoice, buffer(0,f2burstlen))
 		
 		local datatype = bit.band((buffer(0,1):uint() % 0x80),0x3F)
-		local crypto = getbit(buffer(0,1):uint(),6)
+		local crypto = 0
 		local datatypestr = cbdts[datatype]
 
 		--SLOT NUM
@@ -162,6 +163,13 @@ do
 			slotnum = ((((buffer(1,1):uint())/ 0x80) >= 1) and 1 or 0)
 			slotdesc = "Slot number : "..slotnumcode[slotnum]
 			t1:add(f_slotnum, buffer(1,1), slotdesc)
+		end
+		
+		local cryptodesc = nil
+		if datatype == 10 then
+			crypto = ((((buffer(0,1):uint() % 0x80) / 0x40) >= 1) and 1 or 0)
+			cryptodesc = "."..crypto.."......".." = Crypto : "..crypto
+			t1:add(f_crypto, buffer(0,1), cryptodesc)
 		end
 		
 		--CYPHER BURST DATA TYPE
@@ -180,11 +188,21 @@ do
 		
 		
 		local b = {}
-		for i = 7, 1, -1 do
-			b[7-i] = ((((datatype % (2^i)) / (2^(i-1))) >= 1) and 1 or 0)
+		local index = 7
+		if datatype == 10 then
+			index = 6
 		end
+		
+		for i = index, 1, -1 do
+			b[index-i] = ((((buffer(0,1):uint() % (2^i)) / (2^(i-1))) >= 1) and 1 or 0)
+		end
+		 
 		local datatypedesc = "."
-		for i = 0, 6, 1 do
+		if datatype == 10 then
+			datatypedesc = ".."
+		end
+		
+		for i = 0, index - 1, 1 do
 			datatypedesc = datatypedesc..b[i]
 		end
 		
@@ -379,7 +397,6 @@ do
 				t1:append_text(" (BURST E)")
 			elseif length == 31 then
 				t1:append_text(" (Encrypted BURST F)")
-				--crypto = 1
 			else
 				print("Invalid burst type")
 			end
@@ -460,19 +477,19 @@ do
 				-- Crypto
 				if crypto == 1 then
 					if (f2burstlen >= (27 + 6)) then
-						t1:add(f_IV, buffer(27, 4))
-						t1:add(f_KeyId, buffer(31, 1))
+						t1:add(f_ivkey, buffer(27, 4))
+						t1:add(f_keyid, buffer(31, 1))
 						local algid1 = getbit(buffer(32,1):uint(),5)
 						local algid2 = getbit(buffer(32,1):uint(),6)
 						local algid3 = getbit(buffer(32,1):uint(),7)
-						local algiddesc = "Alg Id: 0b "..algid3..algid2..algid1
+						local algiddesc = "Alg Id: "..algid3..algid2..algid1
 						t1:add(f_algid, buffer(32,1), algiddesc)
 						local rsvd1 = getbit(buffer(32,1):uint(),0)
 						local rsvd2 = getbit(buffer(32,1):uint(),1)
 						local rsvd3 = getbit(buffer(32,1):uint(),2)
 						local rsvd4 = getbit(buffer(32,1):uint(),3)
 						local rsvd5 = getbit(buffer(32,1):uint(),4)
-						local rsvddesc = "Reserved: 0b "..rsvd5..rsvd4..rsvd3..rsvd2..rsvd1
+						local rsvddesc = "Reserved: "..rsvd5..rsvd4..rsvd3..rsvd2..rsvd1
 						t1:add(f_rsvd1, buffer(32,1), rsvddesc)
 					end
 				end
