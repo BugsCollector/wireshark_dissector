@@ -13,7 +13,7 @@ function hexdisp(x)
 end
 
 function getbit(x, n)
-		return (((x % (2^(n+1)) / (2^n)) >= 1) and 1 or 0)
+	return (((x % (2^(n+1)) / (2^n)) >= 1) and 1 or 0)
 end
 
 function wordswap(a , n)

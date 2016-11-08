@@ -7,8 +7,6 @@ do
 			[0x01] = "SLOT 2",
 		}
 
-
-
 	local f_length = ProtoField.uint16("f2burstvoice.length", "Length", base.DEC)
 
 	local f_burstdatastatus = ProtoField.uint8("f2burstvoice.burstdatastatus", "Burst Data Status", base.HEX)
@@ -32,8 +30,9 @@ do
 	local f_destaddr = ProtoField.uint32("f2burstvoice.destaddr", "Destination Address", base.HEX)
 	local f_crc = ProtoField.uint16("f2burstvoice.crc", "Header CRC", base.HEX)
 	local f_auth = ProtoField.bytes("f2burstvoice.auth", "Authentication", base.HEX)
-
-	p_f2burstvoice.fields = {f_burstdatastatus, f_length, f_embsigbits, f_bustdatasize, f_burstdata, f_mfid, f_ivkey, f_destaddr,  f_voiceframe1, f_voiceframe2, f_voiceframe3, f_emblchardbits, f_emb, f_slottype, f_emblc, f_emblcmanid, f_emblctga, f_emblcsga, f_crc, f_auth}
+	local f_IV = ProtoField.bytes("f2burstvoice.IV", "32-bit IV", base.HEX)
+	local f_KeyId = ProtoField.uint8("f2burstvoice.KeyId", "Key Id", base.HEX)
+	p_f2burstvoice.fields = {f_burstdatastatus, f_length, f_embsigbits, f_bustdatasize, f_burstdata, f_mfid, f_ivkey, f_destaddr,  f_voiceframe1, f_voiceframe2, f_voiceframe3, f_emblchardbits, f_emb, f_slottype, f_emblc, f_emblcmanid, f_emblctga, f_emblcsga, f_crc, f_auth, f_IV, f_KeyId}
 
 	--Cypher  Burst data types
 	local cbdts = {
@@ -69,7 +68,6 @@ do
 
 	p_f2emblc = Proto("f2emblc", "EMB LC")
 
-
 	function p_f2burstvoice.dissector(buffer, packet, t)
 		local f_slotnum = ProtoField.bytes("f2burstvoice.slotnum", "SLOT NUM", base.HEX, slotnumdisp,  0x80)  --This definition should be put into the function, otherwise may not work
 		p_f2burstvoice.fields = {f_slotnum}
@@ -85,6 +83,7 @@ do
 		local f_cryptoreadybit = ProtoField.bytes("f2burstdata.cryptoready", "CrytoReady bit Present", base.HEX)
 		local f_burstsourcebit = ProtoField.uint8("f2burstdata.burstsourcebit", "Burst Source Bit", base.HEX)
 		local f_ignoresigbits = ProtoField.uint8("f2burstdata.ignoresigbits", "Ignore Sig Bits", base.HEX)
+		local f_embbit = ProtoField.uint8("f2burstdata.embbit", "EMB", base.HEX)
 		local f_synclocation = ProtoField.uint8("f2burstdata.synclocation", "Sync Location Bits Present", base.HEX)
 		local f_emblchardbit = ProtoField.uint8("f2burstdata.emblchardbit", "EMB LC Hard Bits", base.HEX)
 		local f_badvoiceburst = ProtoField.uint8("f2burstdata.badvoiceburst", "Bad Voice Burst", base.HEX)
@@ -148,6 +147,7 @@ do
 		local t1 = t:add(p_f2burstvoice, buffer(0,f2burstlen))
 		
 		local datatype = bit.band((buffer(0,1):uint() % 0x80),0x3F)
+		local crypto = getbit(buffer(0,1):uint(),6)
 		local datatypestr = cbdts[datatype]
 
 		--SLOT NUM
@@ -370,13 +370,16 @@ do
 		end
 
 		--BURST determination
-		if length == 20 or length == 25 or length == 34 or length == 10 then
+		if length == 20 or length == 25 or length == 34 or length == 10 or length == 31 then
 			if length == 20 then	--BURST A
 				t1:append_text(" (BURST A)")
-			elseif length == 25 then 	--BURST B
+			elseif length == 25 then 	--BURST B,C,D,F
 				t1:append_text(" (BURST B,C,D,F)")
 			elseif length == 34 then
 				t1:append_text(" (BURST E)")
+			elseif length == 31 then
+				t1:append_text(" (Encrypted BURST F)")
+				--crypto = 1
 			else
 				print("Invalid burst type")
 			end
@@ -408,7 +411,7 @@ do
 				end
 			end
 
-			if length == 25 then 	--BURST B,C,D,F
+			if length == 25 or length == 31 then 	--BURST B,C,D,F
 				print("Burst B entry")
 				t1:add(f_emblchardbits, buffer(22, 4))
 				t1:add(f_emb, buffer(26,1))
@@ -453,9 +456,33 @@ do
 				local lcssdesc = "....."..lcssb[0]..lcssb[1]..".".." = LC Start/Stop : "..lcsscode[lcss]
 				t1:add(f_lcss, buffer(26,1), lcssdesc)
 				-------------------------------------------------------------------------------EMB
+				
+				-- Crypto
+				if crypto == 1 then
+					if (f2burstlen >= (27 + 6)) then
+						t1:add(f_IV, buffer(27, 4))
+						t1:add(f_KeyId, buffer(31, 1))
+						local algid1 = getbit(buffer(32,1):uint(),5)
+						local algid2 = getbit(buffer(32,1):uint(),6)
+						local algid3 = getbit(buffer(32,1):uint(),7)
+						local algiddesc = "Alg Id: 0b "..algid3..algid2..algid1
+						t1:add(f_algid, buffer(32,1), algiddesc)
+						local rsvd1 = getbit(buffer(32,1):uint(),0)
+						local rsvd2 = getbit(buffer(32,1):uint(),1)
+						local rsvd3 = getbit(buffer(32,1):uint(),2)
+						local rsvd4 = getbit(buffer(32,1):uint(),3)
+						local rsvd5 = getbit(buffer(32,1):uint(),4)
+						local rsvddesc = "Reserved: 0b "..rsvd5..rsvd4..rsvd3..rsvd2..rsvd1
+						t1:add(f_rsvd1, buffer(32,1), rsvddesc)
+					end
+				end
 
-				if ((f2burstlen > 27) and (f2burstlen == 27+10)) then
-					t1:add(f_auth, buffer(27, 10))
+				if (f2burstlen > 27) then
+					if (f2burstlen == 27 + 10) then
+						t1:add(f_auth, buffer(27, 10))
+					elseif (f2burstlen == 33 + 10) then
+						t1:add(f_auth, buffer(33, 10))
+					end
 				end
 
 			elseif length == 34 then	--BURST E
@@ -469,20 +496,20 @@ do
 				for i = 0, 8, 1 do
 					tmplc[i] = buffer(26+i,1):uint()
 				end
-				wordswap(tmplc, 9)
+				--wordswap(tmplc, 9)
 
 
 				--PF
 				local pfcode = {[0] = "Un-Scrambled", [1] = "Scrambled",}
 				local pf = getbit(tmplc[0], 7)
 				local pfdesc = pf..".......".." = Link Control Protection Flag : "..pfcode[pf]
-				t1c:add(f_emblcpf, buffer(27,1), pfdesc)
+				t1c:add(f_emblcpf, buffer(26,1), pfdesc)
 
 				--SF
 				local sfcode = {[0] = "Implicit MFID Format", [1] = "Explicit MFID Format",}
 				local sf = getbit(tmplc[0], 6)
 				local sfdesc = "."..sf.."......".." = MFID Format : "..sfcode[sf]
-				t1c:add(f_emblcsf, buffer(27,1), sfdesc)
+				t1c:add(f_emblcsf, buffer(26,1), sfdesc)
 
 				--Operand code
 				local opcodecode = {[0x0] = "Group Voice Call", [0x03] = "Individual Voice Call",}
@@ -504,36 +531,36 @@ do
 				end
 
 				elopcodedesc = elopcodedesc.." = Operand Code : "..elopcodestr
-				t1c:add(f_emblcopcode, buffer(27,1), elopcodedesc)
+				t1c:add(f_emblcopcode, buffer(26,1), elopcodedesc)
 
 
 				--Manufacture's Id
-				t1c:add(f_emblcmanid, buffer(26,1)) --tmplc[1]
+				t1c:add(f_emblcmanid, buffer(27,1)) --tmplc[1]
 
 				--Service Option
 					--Emergency Code
 				local soemergcode = {[0] = "Non-Emergency", [1] = "Emergency",}
 				local emerg = getbit(tmplc[2],7)	--((buffer(28,1):uint() / 0x80)  >= 1) and 1 or 0
 				local emergdesc = emerg..".......".." = Emergency : "..soemergcode[emerg]
-				t1c:add(f_seropemergency, buffer(29,1), emergdesc)
+				t1c:add(f_seropemergency, buffer(28,1), emergdesc)
 
 					--Privacy
 				local privacycode = {[0] = "Un-Scrambled", [1] = "Scrambled",}
 				local privacy = getbit(tmplc[2],6) 	--((((buffer(28,1):uint()  % 0x80) / 0x40) >= 1) and 1 or 0)
 				local privacydesc = "."..privacy.."......".." = Privacy : "..privacycode[privacy]
-				t1c:add(f_seropprivacy, buffer(29,1), privacydesc)
+				t1c:add(f_seropprivacy, buffer(28,1), privacydesc)
 
 					--Broadcast
 				local broadcastcode  = {[0] = "Non-BroadCast", [1] = "BroadCast",}
 				local broadcast =  getbit(tmplc[2],3) --((((buffer(28,1):uint()  % 0x10) / 0x08) >= 1) and 1 or 0)
 				local broadcastdesc = "...."..broadcast.."...".." = Broadcast : "..broadcastcode[broadcast]
-				t1c:add(f_seropbroadcast, buffer(29,1), broadcastdesc)
+				t1c:add(f_seropbroadcast, buffer(28,1), broadcastdesc)
 
 					--Open Voice Call Mode
 				local ovcmcode = {[0] = "Non-OVCM Call", [1] = "OVCM Call",}
 				local ovcm = getbit(tmplc[2],2) --((((buffer(28,1):uint()  % 0x08) / 0x04) >= 1) and 1 or 0)
 				local ovcmdesc = "....."..ovcm.."..".." = Open Voice Call Mode : "..ovcmcode[ovcm]
-				t1c:add(f_seropovcm, buffer(29,1), ovcmdesc)
+				t1c:add(f_seropovcm, buffer(28,1), ovcmdesc)
 
 					--Priority Level
 				local prilevcode = {[0] = "No Priority", [1] = "Priority 1", [2] = "Priority 2", [3] = "Priority 3",}
@@ -542,27 +569,27 @@ do
 				pl[0] = getbit(tmplc[2],1)
 				pl[1] = getbit(tmplc[2],0)
 				local pldesc = "......"..pl[0]..pl[1].." = Priority Level : "..prilevcode[prilev]
-				t1c:add(f_seropprioritylev, buffer(29,1), pldesc)
-
+				t1c:add(f_seropprioritylev, buffer(28,1), pldesc)
+				
 				--Target Group Address
-				local bytedisp = {[1] = "(1st Byte)", [2] = "(3rd Byte)", [3] = "(2nd Byte)",}
-				local str = "Target Group address :0x"..hexdisp(tmplc[3])..hexdisp(tmplc[5])..hexdisp(tmplc[4])
+				local bytedisp = {[1] = "(1st Byte)", [2] = "(2nd Byte)", [3] = "(3rd Byte)",}
+				local str = "Target Group address :0x"..hexdisp(buffer(29,1):uint())..hexdisp(buffer(30,1):uint())..hexdisp(buffer(31,1):uint())
 				local strdisp = {}
 				for i = 1,3,1 do
-					strdisp[i]= str..bytedisp[i].."(0x"..hexdisp(tmplc[2+i])..")"
+					strdisp[i]= str..bytedisp[i].."(0x"..hexdisp(buffer(28+i,1):uint())..")"
 				end
 				t1c:add(f_emblctga, buffer(29,1), strdisp[1])
-				t1c:add(f_emblctga, buffer(30,1), strdisp[3])
-				t1c:add(f_emblctga, buffer(31,1), strdisp[2])
+				t1c:add(f_emblctga, buffer(30,1), strdisp[2])
+				t1c:add(f_emblctga, buffer(31,1), strdisp[3])
 
 				--Source Group Address
-				local bytedisp = {[1] = "(2nd Byte)", [2] = "(1st Byte)", [3] = "(3rd Byte)",}
-				str = "Source Group address :0x"..hexdisp(tmplc[7])..hexdisp(tmplc[6])..hexdisp(tmplc[8])
+				local bytedisp = {[1] = "(1st Byte)", [2] = "(2nd Byte)", [3] = "(3rd Byte)",}
+				local str = "Source Group address :0x"..hexdisp(buffer(32,1):uint())..hexdisp(buffer(33,1):uint())..hexdisp(buffer(34,1):uint())
 				for i = 1,3,1 do
-					strdisp[i]= str..bytedisp[i].."(0x"..hexdisp(tmplc[5+i])..")"
+					strdisp[i]= str..bytedisp[i].."(0x"..hexdisp(buffer(31+i,1):uint())..")"
 				end
-				t1c:add(f_emblcsga, buffer(32,1), strdisp[2])
-				t1c:add(f_emblcsga, buffer(33,1), strdisp[1])
+				t1c:add(f_emblcsga, buffer(32,1), strdisp[1])
+				t1c:add(f_emblcsga, buffer(33,1), strdisp[2])
 				t1c:add(f_emblcsga, buffer(34,1), strdisp[3])
 
 				-----------------------------------------------------------------------------------end of decode EMB LC
@@ -613,6 +640,7 @@ do
 				if ((f2burstlen > 36) and (f2burstlen == 36+10)) then
 					t1:add(f_auth, buffer(36, 10))
 				end
+			
 
 			elseif length == 10 then	--VOCE HEADER OR TERMINATOR or PI Header
 				local t1c = t1:add(f_burstdata, buffer(8,burstSize/8))
@@ -624,20 +652,20 @@ do
 					for i = 0, 8, 1 do
 						tmplc[i] = buffer(8+i,1):uint()
 					end
-					wordswap(tmplc, 9)
+					--wordswap(tmplc, 9)
 
 
 					--PF
 					local pfcode = {[0] = "Un-Scrambled", [1] = "Scrambled",}
 					local pf = getbit(tmplc[0], 7)
 					local pfdesc = pf..".......".." = Link Control Protection Flag : "..pfcode[pf]
-					t1c:add(f_emblcpf, buffer(9,1), pfdesc)
+					t1c:add(f_emblcpf, buffer(8,1), pfdesc)
 
 					--SF
 					local sfcode = {[0] = "Implicit MFID Format", [1] = "Explicit MFID Format",}
 					local sf = getbit(tmplc[0], 6)
 					local sfdesc = "."..sf.."......".." = MFID Format : "..sfcode[sf]
-					t1c:add(f_emblcsf, buffer(9,1), sfdesc)
+					t1c:add(f_emblcsf, buffer(8,1), sfdesc)
 
 					--Operand code
 					local opcodecode = {[0x0] = "Group Voice Call", [0x03] = "Individual Voice Call",}
@@ -659,36 +687,36 @@ do
 					end
 
 					elopcodedesc = elopcodedesc.." = Operand Code : "..elopcodestr
-					t1c:add(f_emblcopcode, buffer(9,1), elopcodedesc)
+					t1c:add(f_emblcopcode, buffer(8,1), elopcodedesc)
 
 
 					--Manufacture's Id
-					t1c:add(f_emblcmanid, buffer(8,1)) --tmplc[1]
+					t1c:add(f_emblcmanid, buffer(9,1)) --tmplc[1]
 
 					--Service Option
 						--Emergency Code
 					local soemergcode = {[0] = "Non-Emergency", [1] = "Emergency",}
 					local emerg = getbit(tmplc[2],7)	--((buffer(28,1):uint() / 0x80)  >= 1) and 1 or 0
 					local emergdesc = emerg..".......".." = Emergency : "..soemergcode[emerg]
-					t1c:add(f_seropemergency, buffer(11,1), emergdesc)
+					t1c:add(f_seropemergency, buffer(10,1), emergdesc)
 
 						--Privacy
 					local privacycode = {[0] = "Un-Scrambled", [1] = "Scrambled",}
 					local privacy = getbit(tmplc[2],6) 	--((((buffer(28,1):uint()  % 0x80) / 0x40) >= 1) and 1 or 0)
 					local privacydesc = "."..privacy.."......".." = Privacy : "..privacycode[privacy]
-					t1c:add(f_seropprivacy, buffer(11,1), privacydesc)
+					t1c:add(f_seropprivacy, buffer(10,1), privacydesc)
 
 						--Broadcast
 					local broadcastcode  = {[0] = "Non-BroadCast", [1] = "BroadCast",}
 					local broadcast =  getbit(tmplc[2],3) --((((buffer(28,1):uint()  % 0x10) / 0x08) >= 1) and 1 or 0)
 					local broadcastdesc = "...."..broadcast.."...".." = Broadcast : "..broadcastcode[broadcast]
-					t1c:add(f_seropbroadcast, buffer(11,1), broadcastdesc)
+					t1c:add(f_seropbroadcast, buffer(10,1), broadcastdesc)
 
 						--Open Voice Call Mode
 					local ovcmcode = {[0] = "Non-OVCM Call", [1] = "OVCM Call",}
 					local ovcm = getbit(tmplc[2],2) --((((buffer(28,1):uint()  % 0x08) / 0x04) >= 1) and 1 or 0)
 					local ovcmdesc = "....."..ovcm.."..".." = Open Voice Call Mode : "..ovcmcode[ovcm]
-					t1c:add(f_seropovcm, buffer(11,1), ovcmdesc)
+					t1c:add(f_seropovcm, buffer(10,1), ovcmdesc)
 
 						--Priority Level
 					local prilevcode = {[0] = "No Priority", [1] = "Priority 1", [2] = "Priority 2", [3] = "Priority 3",}
@@ -697,27 +725,32 @@ do
 					pl[0] = getbit(tmplc[2],1)
 					pl[1] = getbit(tmplc[2],0)
 					local pldesc = "......"..pl[0]..pl[1].." = Priority Level : "..prilevcode[prilev]
-					t1c:add(f_seropprioritylev, buffer(11,1), pldesc)
+					t1c:add(f_seropprioritylev, buffer(10,1), pldesc)
 
 					--Target Group Address
-					local bytedisp = {[1] = "(1st Byte)", [2] = "(3rd Byte)", [3] = "(2nd Byte)",}
-					local str = "Target Group address :0x"..hexdisp(tmplc[3])..hexdisp(tmplc[5])..hexdisp(tmplc[4])
+					local bytedisp = {[1] = "(1st Byte)", [2] = "(2nd Byte)", [3] = "(3rd Byte)",}
+					local str = "Target Group address :0x"..hexdisp(tmplc[3])..hexdisp(tmplc[4])..hexdisp(tmplc[5])
+					--local str = "Target Group address :0x"..hexdisp(buffer(11,1):uint())..hexdisp(buffer(12,1):uint())..hexdisp(buffer(13,1):uint())
 					local strdisp = {}
 					for i = 1,3,1 do
 						strdisp[i]= str..bytedisp[i].."(0x"..hexdisp(tmplc[2+i])..")"
+						--strdisp[i]= str..bytedisp[i].."(0x"..hexdisp(buffer(10+i,1):uint())..")"
 					end
 					t1c:add(f_emblctga, buffer(11,1), strdisp[1])
-					t1c:add(f_emblctga, buffer(12,1), strdisp[3])
-					t1c:add(f_emblctga, buffer(13,1), strdisp[2])
+
+					t1c:add(f_emblctga, buffer(12,1), strdisp[2])
+					t1c:add(f_emblctga, buffer(13,1), strdisp[3])
 
 					--Source Group Address
-					local bytedisp = {[1] = "(2nd Byte)", [2] = "(1st Byte)", [3] = "(3rd Byte)",}
-					str = "Source Group address :0x"..hexdisp(tmplc[7])..hexdisp(tmplc[6])..hexdisp(tmplc[8])
+					local bytedisp = {[1] = "(1st Byte)", [2] = "(2nd Byte)", [3] = "(3rd Byte)",}
+					str = "Source Group address :0x"..hexdisp(tmplc[6])..hexdisp(tmplc[7])..hexdisp(tmplc[8])
+					--local str = "Source Group address :0x"..hexdisp(buffer(14,1):uint())..hexdisp(buffer(15,1):uint())..hexdisp(buffer(16,1):uint())
 					for i = 1,3,1 do
 						strdisp[i]= str..bytedisp[i].."(0x"..hexdisp(tmplc[5+i])..")"
+						--strdisp[i]= str..bytedisp[i].."(0x"..hexdisp(buffer(13+i,1):uint())..")"
 					end
-					t1c:add(f_emblcsga, buffer(14,1), strdisp[2])
-					t1c:add(f_emblcsga, buffer(15,1), strdisp[1])
+					t1c:add(f_emblcsga, buffer(14,1), strdisp[1])
+					t1c:add(f_emblcsga, buffer(15,1), strdisp[2])
 					t1c:add(f_emblcsga, buffer(16,1), strdisp[3])
 
 					--CRC
@@ -732,7 +765,7 @@ do
 
 					local data1 = buffer(8,1):uint()
 					local data2 = buffer(9,1):uint()
-					local data3 = buffer(10,2):uint()
+					local data3 = buffer(10,1):uint()
 
 					--Alg Id
 					local algid1 = getbit(data1,0)

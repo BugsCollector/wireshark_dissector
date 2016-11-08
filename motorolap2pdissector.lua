@@ -60,7 +60,7 @@ do
 	local udp_encap_table = DissectorTable.get("udp.port")
 	local ports = {}
 
-	for i = 30000, 70000, 1 do
+	for i = 3000, 70000, 1 do
 	   table.insert(ports, i)
 	end
 
