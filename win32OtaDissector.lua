@@ -5,6 +5,7 @@ do
 	local ota_datatypes = {
 		[0x01] = "DATA_TYPE_VOICE_HEADER",
 		[0x0A] = "DATA_TYPE_VOICE",
+		[0x0B] = "BDH_SYNC_BEACON",
 		[0x02] = "DATA_TYPE_VOICE_TERMINATOR",
 		[0x06] = "DATA_TYPE_DATA_HEADER",
 		[0x08] = "DATA_TYPE_DATA_COMM_CONF",
@@ -50,7 +51,7 @@ do
 	f_byte1 = ProtoField.string("ota.byte1","Header")
 	f_payload = ProtoField.bytes("ota.payload","Payload", base.HEX)
 	local f_datatype = ProtoField.uint8("ota.datatype", "Data Type", base.HEX, {[0x01] = "DATA_TYPE_VOICE_HEADER", [0x0A] = "DATA_TYPE_VOICE",
-					[0x02] = "DATA_TYPE_VOICE_TERMINATOR", [0x06] = "DATA_TYPE_DATA_HEADER", [0x08] = "DATA_TYPE_DATA_COMM_CONF", [0x07] = "DATA_TYPE_DATA_COMM_UNCONF",
+					[0x02] = "DATA_TYPE_VOICE_TERMINATOR", [0x06] = "DATA_TYPE_DATA_HEADER", [0x08] = "DATA_TYPE_DATA_COMM_CONF", [0x07] = "DATA_TYPE_DATA_COMM_UNCONF", [0x0B] = "BDH_SYNC_BEACON",
 					[0x13] = "DATA_TYPE_SYNC_UNDETECT", [0x22] = "DATA_TYPE_STATUS_CSBK", [0x23] = "DATA_TYPE_CAP_PLUS_LC_IN_CACH", [0x03] = "DATA_TYPE_CSBK",
 					[0x00] = "DATA_TYPE_ESYNC", [0xFF] = "DATA_TYPE_PARITY_FAIL", [0x33] = "DATA_TYPE_ENCRYPTION_MSG", [0x16] = "DATA_TYPE_LC_IN_CACH_ARM",
 					[0x27] = "DATA_TYPE_VOICE_WITH_INTERRUPT_REQUEST", [0x20] = "DATA_TYPE_CWID_COMPLETE",})
@@ -79,7 +80,6 @@ do
 
 	function p_ota.dissector(buf,pkt,root)
 		pkt.cols.protocol:set("OTA")
-		local datatype = buf(5,1):uint()
 		local t = nil
 		local opID = buf(0,2):uint()
 		local len = buf:len()
@@ -91,7 +91,12 @@ do
 
 			local info = string.format("%s",dispheader)
 			pkt.cols.info:set(info)
-		
+		elseif opID == 0x80ff then
+			local info = "Slot2 POLL"
+			pkt.cols.info:set(info)
+		elseif opID == 0x00ff then
+			local info = "Slot1 POLL"
+			pkt.cols.info:set(info)
 		elseif opID == 0x5350 then -- 0x5350 is SPK
 			t = root:add(p_ota, buf(0,6))
 			t:add(f_byte1, buf(0,6))
@@ -101,6 +106,7 @@ do
 			pkt.cols.info:set(info)
 				
 		elseif opID == 0x5458 then --0x5458 is TX
+			local datatype = buf(5,1):uint()
 			t = root:add(p_ota, buf(0,5))
 			t:add(f_byte1, buf(0,5))
 			local dispheader = buf(0,5):string()

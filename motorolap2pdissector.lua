@@ -20,19 +20,17 @@ do
 		
 		if pdu_id >= 0x30 and pdu_id <= 0x33 then -- Voting
 		    proto_type = 2
-		elseif pdu_id == 0xf0 or pdu_id == 0xf1 then
-		    proto_type = 2
 		elseif pdu_id == 0xCC then
 		    proto_type = 2
 		elseif pdu_id >= 0x90 and pdu_id < 0xB0 then
 		    proto_type = 2
-		elseif pdu_id == 0xb2 then
+		elseif pdu_id == 0xB2 then
         	proto_type = 3
 		elseif pdu_id >= 0xA0 then
 		    proto_type = 1
 		elseif pdu_id == 0x30 then -- Emerald
 		    user_define_dissector_name = "eml"	
-		elseif pdu_id == 0x53 or pdu_id == 0x54 then		-- OTA PDU
+		elseif pdu_id == 0x53 or pdu_id == 0x54 or pdu_id == 0x80 or pdu_id == 0x00 then		-- OTA PDU
 		    user_define_dissector_name = "ota"
 		elseif pdu_id < 0x90 then -- P2P
 		    proto_type = 1

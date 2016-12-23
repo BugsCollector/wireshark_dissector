@@ -22,8 +22,7 @@ do
         [0x33] = "LE_DIGITALVOTING_MAP_BROADCAST",
         [0xCC] = "LE_SITE_KEEP_ALIVE_BROADCAST",
         [0xA5] = "LE_SATELLITE_BURST",
-        [0xF0] = "RAS_REQUEST",
-        [0XF1] = "RAS_RESPONSE"
+        
     }
 
     le_pdu_len = {
@@ -47,8 +46,6 @@ do
         [0x33] = 12,
         [0xCC] = 40,
         [0xA5] = 25,
-        [0xF0] = 5,
-        [0XF1] = 5
     }
 
     optiontype = {
