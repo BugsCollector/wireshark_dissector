@@ -29,7 +29,7 @@ do
 		[0xd0] = "NCS_REQUEST_PDU",
 		[0xd1] = "NCS_REPLY_PDU",
 		[0xF0] = "RAS_REQUEST",
-        	[0XF1] = "RAS_RESPONSE",
+        [0XF1] = "RAS_RESPONSE",
 		[0xf2] = "DBH_BEACON"
 	}
 
@@ -61,8 +61,8 @@ do
 		[0xd0] = 14,
 		[0xd1] = 30,
 		[0xF0] = 5,
-        	[0XF1] = 5,
-		[0xf2] = 7
+        [0XF1] = 5,
+		[0xF2] = 6
 	}
 
 	local ext_fnct_opcode = {
@@ -76,8 +76,14 @@ do
 	  
 	local dbh_beacon_cmd = {
 		[0x00] = "START_BEACON",
-		[0x01] = "LE_BEACON"
+		[0x01] = "LE_BEACON",
+		[0x02] = "START_ROAMING_BEACON"
 	}  
+	
+	local slot_num_table = {
+		[0x00] = "SLOT_ONE",
+		[0x01] = "SLOT_TWO"
+	}
 
 	local f_opcode = ProtoField.uint8("p2p.opcode","Opcode",base.HEX, p2p_pdu)
     local f_siteid = ProtoField.uint8("p2p.siteid", "Site Id", base.DEC)
@@ -112,7 +118,16 @@ do
     local f_wideareatalkgrps = ProtoField.uint8("p2p.wideareatalkgrps", "TG IDs of ongoing calls", base.DEC)
     local f_dbh_syncbeacon_cmd = ProtoField.uint8("p2p.dbhsyncbeaconcmd", "DBH Beacon", base.DEC, dbh_beacon_cmd)
     local f_dbh_syncbeacon_num = ProtoField.uint8("p2p.dbhsyncbeaconnum", "DBH Beacon Number", base.DEC)
-	  -- Added for RCM messages
+	local f_dbh_minhopcount =  ProtoField.uint8("p2p.dbhsyncbeaconmihopcount", "DBH Start Beacon Main Chain Min Hop Count", base.DEC)
+	local f_dbh_offset2TxBegin =  ProtoField.uint8("p2p.dbhsyncbeaconoffset2txbegin", "DBH Start Beacon Offset2TxBegin", base.DEC)
+	local f_lebeacon_hopcnt = ProtoField.uint8("p2p.lebeaconhopcnt", "DBH LE Beacon Hop Count", base.DEC)
+	local f_lebeacon_slot = ProtoField.uint8("p2p.lebeaconslot", "DBH LE Beacon Beacon Slot Num", base.DEC, slot_num_table)
+	local f_lebeacon_ofn = ProtoField.uint8("p2p.lebeaconofn", "DBH LE Beacon Beacon Original Fork Num", base.DEC)
+	local f_lebeacon_srcbrid = ProtoField.uint16("p2p.lebeaconsourcerepeaterid", "Source Repeater ID", base.DEC)
+	local f_lebeacon_modebit = ProtoField.uint16("p2p.lebeaconmodebit", "Source Repeater Mode Bits", base.HEX)
+	local f_lebeacon_servicebit = ProtoField.uint32("p2p.lebeaconservicebits", "Source Repeater Service Bits", base.HEX)
+	
+	-- Added for RCM messages
     local f_calltype = ProtoField.uint8("p2p.calltype", "Call Type", base.HEX, {[0x30] = "Preamble Private Data Call", [0x31] = "Preamble Group Data Call", [0x32] = "Preamble Private CSBK Call", [0x33] = "Preamble Group CSBK Call", [0x34] = "Preamble Emergency Call", [0x40] = "Emergency CSBK Alarm Request", [0x41] = "Emergency CSBK Alarm Response", [0x42] = "Emergency Voice Call", [0x43] = "Private Call Request", [0x44] = "Private Call Response", [0x45] = "Call Alert Request", [0x46] = "Call Alert Response", [0x47] = "Radio Check Request", [0x48] = "Radio Check Response", [0x49] = "Radio Inhibit/Disable Request", [0x4A] = "Radio Inhibit/Disable Response", [0x4B] = "Radio Un-Inhibit/Enable Request", [0x4C] = "Radio Un-Inhibit/Enable Response", [0x4D] = "Radio Monitor Request", [0x4E] = "Radio Monitor Response", [0x4F] = "Group Voice Call", [0x50] = "Private Voice Call", [0x51] = "Group Data Call", [0x52] = "Private Data Call", [0x53] = "All Call", [0x54] = "Confirmed Data Response", [0x55] = "Other Calls", [0x56] = "IP Console Radio Un-Inhibit Request", [0x57] = "IP Console Radio Inhibit Request", [0x58] = "IP Console Radio Un-Inhibit Response", [0x59] = "IP Console Radio Inhibit Response", [0x5A] = "Group Phone Call", [0x5B] = "Private Phone Call", [0x5C] = "Phone All Call" })
     
     local f_callsecuritytype = ProtoField.uint8("p2p.callsecuritytype", "Call Security Type", base.HEX, {[0] = "Clear", [1] = "Basic Privacy", [2]="Enhanced Privacy"} )
@@ -193,7 +208,8 @@ do
         f_callstate1, f_callstate2,
         f_rptblockstatus, f_availnumchans, f_availablechan, f_channel,
         f_ttSequence, f_tiSrcid, f_bsOpcode, f_busyrestchnlid, f_wideareatgid,
-        f_wideareatalkgrps, f_srcsiteid, f_callsrcid, f_calltgtid,f_sitejoin_talkgroups,f_sitejoin_srcofcalls, f_dbh_syncbeacon_cmd, f_dbh_syncbeacon_num}
+        f_wideareatalkgrps, f_srcsiteid, f_callsrcid, f_calltgtid,f_sitejoin_talkgroups,f_sitejoin_srcofcalls, 
+		f_dbh_syncbeacon_cmd, f_dbh_syncbeacon_num, f_dbh_minhopcount, f_dbh_offset2TxBegin, f_lebeacon_hopcnt, f_lebeacon_slot, f_lebeacon_ofn, f_lebeacon_srcbrid, f_lebeacon_modebit, f_lebeacon_servicebit }
         
     local audio_dis = Dissector.get("data")
         
@@ -660,13 +676,39 @@ do
 				
 	    elseif opid == 0xf2 then -- DBH_BEACON
 	    	t = root:add(p_p2p, buf(0, buf_len))
-		t:add(f_opcode, buf(0, 1))
-		peerid = buf(1,4):uint()
-		t:add(f_peerid, buf(1, 4))
-		t:add(f_dbh_syncbeacon_cmd, buf(5,1))
-		t:add(f_dbh_syncbeacon_num, buf(6,1))
-		local syncNum = buf(6,1):uint()
-            end
+			t:add(f_opcode, buf(0, 1))
+			peerid = buf(1,4):uint()
+			t:add(f_peerid, buf(1, 4))
+			t:add(f_dbh_syncbeacon_cmd, buf(5,1))
+			local cmd = buf(5,1):uint()
+			if cmd == 0x0 then	-- Start Beacon
+				t:add(f_dbh_minhopcount, buf(6,1))
+				t:add(f_dbh_offset2TxBegin, buf(7,1))
+			elseif cmd == 0x1 then -- LE Beacon	
+				t:add(f_dbh_syncbeacon_num, buf(6,1))
+				local num = buf(6,1):uint()
+				if num > 0 then
+					for i = 0, num-1, 1 do
+						local byte1 = buf(7+4*i,1):uint()
+						
+						local hopcnt = bit.band(byte1, 0xf)
+						t:add(f_lebeacon_hopcnt, buf(7+4*i,1), hopcnt)
+						
+						local slot = bit.rshift(bit.band(byte1, 0x10), 4)
+						t:add(f_lebeacon_slot, buf(7+4*i,1), slot)
+						
+						local ofn = bit.rshift(bit.band(byte1, 0xE0), 5)
+						t:add(f_lebeacon_ofn, buf(7+4*i,1), ofn)
+						
+						t:add(f_lebeacon_srcbrid, buf(8+4*i,2)) 
+						mode_bits_disp_ipsc_cap(t, buf(10+4*i,2))
+						service_bits_disp(t, buf(12+4*i,3), 1, 0)
+						--t:add(f_lebeacon_modebit, buf(10+4*i,2))
+						--t:add(f_lebeacon_servicebit, buf(12+4*i,3))
+					end
+				end
+			end
+			end
         end
             
         -- info field

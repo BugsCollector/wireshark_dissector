@@ -21,6 +21,7 @@ do
         [0x32] = "LE_RRP_SATELLITE_ID_MAP",
         [0x33] = "LE_DIGITALVOTING_MAP_BROADCAST",
         [0xCC] = "LE_SITE_KEEP_ALIVE_BROADCAST",
+		[0xA0] = "LE_BACKHAUL_DISCOVER",
         [0xA5] = "LE_SATELLITE_BURST",
         
     }
@@ -45,7 +46,8 @@ do
         [0x32] = 12,
         [0x33] = 12,
         [0xCC] = 40,
-        [0xA5] = 25,
+		[0xA0] = 19,
+        [0xA5] = 25
     }
 
     optiontype = {
@@ -117,6 +119,12 @@ do
         [0x1F] = "RESERVED"
 
     }
+	
+	local slot_num_table = {
+		[0x00] = "SLOT_ONE",
+		[0x01] = "SLOT_TWO",
+		[0x02] = "SLOT_BOTH"
+	}
 
     peerservicesForLCP = { -- TODO: Might need to update functions that use this
         [0x00] = "Voice Call",
@@ -173,6 +181,37 @@ do
         [0xC0] = "Continuation Voter Map",
         [0x80] = "Map Continuation Indicator"
     }
+	
+	BackhaulRole = {
+		[0x1] = "Drop Repeater", 
+		[0x2] = "Link Forward Repeater", 
+		[0x3] = "Link Backward Repeater", 
+	}
+	
+	RepeaterState =  {
+		[0x00] = "F2_CP_HIBERNATE",
+		[0x10] = "F2_CP_HANGTIME",
+		[0x11] = "F2_CP_HANGTIME_RCT",
+		[0x20] = "F2_CP_REPEATING_1",
+		[0x30] = "F2_CP_REPEATING_2",
+		[0x40] = "F2_CP_REPEATING_1_2",
+		[0x50] = "F2_CP_FCCBLOCK",
+		[0x51] = "F2_CP_FCCBLOCK_RCT",
+		[0x60] = "F2_CP_NFLBLOCK"
+	}
+	
+	SlotState = {
+		[0x00] = "FC_CALLAPP_NULL",
+		[0x10] = "F2_CALLAPP_CHNL_HANG",
+		[0x11] = "F2_CALLAPP_CHNL_HANG_RCT",
+		[0x12] = "F2_CALLAPP_CHNL_HANG_BUSY",
+		[0x13] = "F2_CALLAPP_CHNL_HANG_GPS_ANNOUNCEMENT",
+		[0x20] = "F2_CALLAPP_ACTIVE",
+		[0x21] = "F2_CALLAPP_ACTIVE_VHDR",
+		[0x22] = "F2_CALLAPP_ACTIVE_PIHDR",
+		[0x23] = "F2_CALLAPP_ACTIVE_TT",
+		[0x30] = "F2_CALLAPP_CALL_HANG",
+	}
 
     f_opcode = ProtoField.uint8("le.opcode", "Link Establish Opcode", base.HEX, le_pdu)
     f_siteid = ProtoField.uint8("le.siteid", "Site Id", base.DEC)
@@ -262,9 +301,11 @@ do
     f_numvoters = ProtoField.uint32("le.numpeers", "Number of Voters", base.DEC)
     f_Deregistration_siteid = ProtoField.uint8("le.deregistrationsiteid", "Deregistration Site Id", base.DEC)
     f_Deregistration_peerid = ProtoField.uint8("le.deregistrationpeerid", "Deregistration Peer Id", base.DEC)
-
-    
-
+	f_role = ProtoField.uint8("le.role", "Role", base.DEC, BackhaulRole)
+    f_brstate = ProtoField.uint8("le.brstate", "Repeater State", base.DEC, RepeaterState)
+	f_forknum = ProtoField.uint8("le.forknum", "Fork Num", base.DEC)
+	f_slot1state = ProtoField.uint8("le.slot1state", "Slot One State", base.DEC, SlotState)
+	f_slot2state = ProtoField.uint8("le.slot2state", "Slot Two State", base.DEC, SlotState)
 
 
     p_linkest.fields = {
@@ -278,7 +319,7 @@ do
     f_voting_rdac_info, f_voting_rdac_siteid, f_voting_rdac_peerid, f_voting_rdac_ipaddr, f_voting_rdac_port,
     f_voting_mapinfo, f_voting_siteid, f_voting_peerid, f_voting_ipaddr, f_voting_port, f_voting_satsiteid, f_voting_satinfo,
     f_voting_satpeerid, f_voting_satipaddr, f_voting_satport, f_voting_numofrdacs, f_voting_numofsats, f_voting_pduseqnum,
-    f_voting_rsapriority, f_voting_srcid, f_voting_tgtid,f_voting_chnlid,f_voterseq,f_sequencenumber,f_numvoters,f_RequestedVoterId}
+    f_voting_rsapriority, f_voting_srcid, f_voting_tgtid,f_voting_chnlid,f_voterseq,f_sequencenumber,f_numvoters,f_RequestedVoterId, f_role, f_brstate, f_forknum, f_slot1state, f_slot2state}
 
     function p_linkest.dissector(buf, pkt, root)
         local error_msg = nil
@@ -414,7 +455,7 @@ do
             n:add(f_current, buf(0, 2))
             n:add(f_oldest,  buf(2, 2))
         end
-        
+
         -- Peer ID
         function peerID_Disp(n, buf)
             n:add(f_siteid, buf(0, 1))
@@ -1224,6 +1265,16 @@ do
                 t:add(f_voting_tgtid, buf(16,4))
                 t:add(f_timestamp, buf(20,4))
                 t:add(f_voting_chnlid, buf(24,1))
+				
+			elseif opid == 0xA0 then -- LE_BACKHAUL_DISCOVER
+				Version_Disp(t, buf(5,4))
+				t:add(f_role, buf(9,1))
+				t:add(f_brstate,buf(10,1))
+				mode_bits_disp_ipsc_cap(t, buf(11,1))
+				service_bits_disp(t, buf(12, 4), 1, 0)
+				t:add(f_slot1state,buf(16,1))
+				t:add(f_slot2state,buf(17,1))
+				t:add(f_forknum, buf(18,1))
 
             elseif opid == 0x30 then  -- LE_INTERM_RCVR_REGISTRATION_REQUEST
                 -- Check if it's 16 or 8 bits in mode field
