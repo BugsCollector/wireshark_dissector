@@ -186,6 +186,9 @@ do
 		[0x1] = "Drop Repeater", 
 		[0x2] = "Link Forward Repeater", 
 		[0x3] = "Link Backward Repeater", 
+		[0x81] = "Proxy Drop Repeater", 
+		[0x82] = "Proxy Link Forward Repeater", 
+		[0x83] = "Proxy Link Backward Repeater",
 	}
 	
 	RepeaterState =  {
