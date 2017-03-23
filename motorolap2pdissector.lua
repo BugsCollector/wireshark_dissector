@@ -30,7 +30,7 @@ do
 		    proto_type = 1
 		elseif pdu_id == 0x30 then -- Emerald
 		    user_define_dissector_name = "eml"	
-		elseif pdu_id == 0x53 or pdu_id == 0x54 or pdu_id == 0x80 or pdu_id == 0x00 then		-- OTA PDU
+		elseif pdu_id == 0x53 or pdu_id == 0x54 or pdu_id == 0x00 then		-- OTA PDU
 		    user_define_dissector_name = "ota"
 		elseif pdu_id < 0x90 then -- P2P
 		    proto_type = 1
