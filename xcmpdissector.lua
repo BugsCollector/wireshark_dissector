@@ -141,6 +141,7 @@ do
 		[0x14] = "TRIGGER_DIGITAL_CWID",
 		[0x15] = "QUERY_DIGITAL_CWID_STATUS",
 		[0x16] = "QUERY_CWID_CONFIG",
+		[0x18] = "COLLISION_DETECTION"
 	}
 
 	local slot_num_table = {

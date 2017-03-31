@@ -726,6 +726,102 @@ do
                 bit = bit - 1
             end
         end
+		
+		-- Peer Service
+        --   Displays the Peer Services bits
+        --   n = parse tree
+        --   buf = buffer
+        --   ind = 0 for 16 bit, 1 for 32 bit
+        --     lcp = 0 if NOT in LCP mode, 1 if it IS
+        function rdac_service_bits_disp(n, buf, ind, lcp)
+            local v
+            local bit
+            local b
+            local temp
+            if ind == 0 then
+                v = n:add(f_peerservices, buf)
+                bit = 15
+                temp = 15
+            else
+                v = n:add(f_peerservices32, buf)
+                bit = 31
+                temp = 31
+            end
+
+            while bit >= 0 do
+                local service = getbit(buf:uint(), bit)
+                local servicedesc = ""
+                local skip_period = false
+                local service_sec_bit
+
+                b = temp
+                while b >= 0 do
+                    if b ~= bit then
+                        if (skip_period == false) then
+                            servicedesc = servicedesc.."."
+                        else
+                            skip_period = false
+                        end
+                    else
+                        if ((lcp == 1) and (bit == 0x0A)) or ((lcp == 0) and (bit == 0x19)) then -- Need to display both bits of service
+                            service_sec_bit = getbit(buf:uint(), bit-1)
+                            servicedesc = servicedesc..service..service_sec_bit
+                            skip_period = true
+                        elseif (lcp ~= 1) and ((bit == 0x0B) or (bit == 0x09)) then
+                            service_sec_bit = getbit(buf:uint(), bit-1)
+                            servicedesc = servicedesc..service..service_sec_bit
+                            skip_period = true
+                        else
+                            servicedesc = servicedesc..service
+                        end
+                    end
+
+                    if (b % 8) == 0 then
+                        servicedesc = servicedesc .. " "
+                    end
+
+                    b = b - 1
+                end
+
+                if (lcp == 1) and (peerservicesForLCP[bit] ~= nil) then
+                    servicedesc = servicedesc .. " = "..peerservicesForLCP[bit]
+                elseif (lcp == 0) and (peerservices[bit] ~= nil) then
+                    servicedesc = servicedesc .. " = "..peerservices[bit]
+                else
+                    servicedesc = servicedesc.." = Reserved"
+                end
+
+                if ((lcp == 1) and (bit == 0x0A)) or ((lcp == 0) and (bit == 0x19)) then -- MOTOTRBO Gateway Status
+                    local stat1 = service
+                    local stat2 = service_sec_bit
+                    bit = bit - 1
+                    local stat = stat1*2 + stat2
+                    if(gateway_status[stat] ~= nil) then
+                        servicedesc = servicedesc .. " : "..gateway_status[stat]
+                    else
+                        servicedesc = servicedesc .." : "  .. "Unknown Gateway Status: ".. stat
+                    end
+                elseif (lcp ~= 1) and ((bit == 0x0B) or (bit == 0x09)) then -- Slot 2 Assignment Continue Type
+                    local stat1 = service
+                    local stat2 = service_sec_bit
+                    bit = bit - 1
+                    local stat = stat1*2 + stat2
+                    if(gateway_status[stat] ~= nil) then
+                        servicedesc = servicedesc .. " : "..AdditionalSlotAssignmentTypes[stat]
+                    elseif (bit == 0x0B) then
+                        servicedesc = servicedesc .." : "  .. "Unknown Slot 2 Status: ".. stat
+                    else -- Slot 1
+                        servicedesc = servicedesc .." : "  .. "Unknown Slot 1 Status: ".. stat
+                    end
+                else -- Regular status
+                    servicedesc = servicedesc .." : " ..peerservices_status[service]
+                end
+
+                v:add(f_peerstatus, buf, servicedesc)
+
+                bit = bit - 1
+            end
+        end
 
         -- Talkgroup Map Decode
         function tg_map_decode(n, buf)

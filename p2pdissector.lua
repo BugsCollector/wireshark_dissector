@@ -84,7 +84,51 @@ do
 		[0x00] = "SLOT_ONE",
 		[0x01] = "SLOT_TWO"
 	}
+	
+	peerservices_status = {
+        [0x00] = "Disabled",
+        [0x01] = "Enabled",
+        [0x02] = "RESERVED",
+        [0x03] = "RESERVED"
+    }
+	
+	alarmTable = {
+        [0x00] = "Power Roll-back",
+        [0x01] = "Battery",
+        [0x02] = "Over Temperature",
+        [0x03] = "VSWR Alarm",
+        [0x04] = "Fan Alarm",
+        [0x05] = "Power Supply",
+        [0x06] = "User Defined 1",
+        [0x07] = "User Defined 2",
+        [0x08] = "User Defined 3",
+        [0x09] = "User Defined 4",
+        [0x0A] = "User Defined 5",
+        [0x0B] = "User Defined 6",
+        [0x0C] = "Battery Revert",
+        [0x0D] = "RESERVED",
+        [0x0E] = "RESERVED",
+        [0x0F] = "RESERVED",
+        [0x10] = "Drop/Link",
+        [0x11] = "RESERVED",
+        [0x12] = "RESERVEDr",
+        [0x13] = "RESERVED",
+        [0x14] = "RESERVED",
+        [0x15] = "RESERVED",
+        [0x16] = "RESERVED",
+        [0x17] = "RESERVED",
 
+    }
+	
+	local f_slot2assign = ProtoField.uint8("le.slot2assign", "Slot 2 Assignement", base.HEX)
+    local f_slot1assign = ProtoField.uint8("le.slot1assign", "Slot 1 Assignement", base.HEX)
+    local f_signallingmode = ProtoField.uint8("le.signallingmode", "Current Signalling Mode", base.HEX)
+    local f_peerstatus = ProtoField.uint8("le.peerstatus", "Peer Status", base.HEX)
+	local f_peerservices = ProtoField.uint16("le.peerservices", "Peer Services", base.HEX)
+    local f_peerservices32 = ProtoField.uint32("le.peerservices32", "Peer Services", base.HEX)
+	local f_peermode = ProtoField.uint16("le.peermode", "Peer Mode", base.HEX)
+    local f_peermode8 = ProtoField.uint8("le.peermode", "Peer Mode", base.HEX)
+	
 	local f_opcode = ProtoField.uint8("p2p.opcode","Opcode",base.HEX, p2p_pdu)
     local f_siteid = ProtoField.uint8("p2p.siteid", "Site Id", base.DEC)
     local f_restid = ProtoField.uint8("p2p.restid", "Rest Id", base.DEC)
@@ -209,7 +253,15 @@ do
         f_rptblockstatus, f_availnumchans, f_availablechan, f_channel,
         f_ttSequence, f_tiSrcid, f_bsOpcode, f_busyrestchnlid, f_wideareatgid,
         f_wideareatalkgrps, f_srcsiteid, f_callsrcid, f_calltgtid,f_sitejoin_talkgroups,f_sitejoin_srcofcalls, 
-		f_dbh_syncbeacon_cmd, f_dbh_syncbeacon_num, f_dbh_minhopcount, f_dbh_offset2TxBegin, f_lebeacon_hopcnt, f_lebeacon_slot, f_lebeacon_ofn, f_lebeacon_srcbrid, f_lebeacon_modebit, f_lebeacon_servicebit }
+		f_dbh_syncbeacon_cmd, f_dbh_syncbeacon_num, f_dbh_minhopcount, f_dbh_offset2TxBegin, f_lebeacon_hopcnt, f_lebeacon_slot, f_lebeacon_ofn, f_lebeacon_srcbrid, f_lebeacon_modebit, f_lebeacon_servicebit,
+		f_slot2assign,
+		f_slot1assign,
+		f_signallingmode,
+		f_peerstatus,
+		f_peerservices,
+		f_peerservices32,
+		f_peermode,
+		f_peermode8}
         
     local audio_dis = Dissector.get("data")
         
@@ -234,6 +286,138 @@ do
             byte = byte + 1
         end
     end
+	
+	--Peer Mode (for IPSC and CapPlus Systems)
+	function mode_bits_disp(n, buf)
+		local u = n:add(f_peermode, buf)
+
+		--Reserved Bit 15
+		local reserved15Bit = getbit(buf:uint(), 15)
+		local reserved15statusdesc = ""..reserved15Bit.."...............".." = Digital Voter Bit : "..peerservices_status[reserved15Bit]
+		u:add(f_peerstatus, buf, reserved15Bit, reserved15statusdesc)
+
+		-- MOTOTRBO Gateway
+		local mototrbogatewayBit = getbit(buf:uint(), 14)
+		local mototrbogatewaystatusdesc = "."..mototrbogatewayBit.."..............".." = MOTOTRBO Gateway : "..peerservices_status[mototrbogatewayBit]
+		u:add(f_peerstatus, buf, mototrbogatewayBit, mototrbogatewaystatusdesc)
+
+		-- No LE w/ Data Revert
+		local nolewdatarevBit = getbit(buf:uint(), 13)
+		local nolewdatarevstatusdesc = ".."..nolewdatarevBit..".............".." = No LE w/ Data Revert : "..peerservices_status[nolewdatarevBit]
+		u:add(f_peerstatus, buf, nolewdatarevBit, nolewdatarevstatusdesc)
+
+		--Remote Programming Peer
+		local rrpBit = getbit(buf:uint(), 12)
+		local rrpstatusdesc = "..."..rrpBit.."............".." = Remote Programming Peer : "..peerservices_status[rrpBit]
+		u:add(f_peerstatus, buf, rrpBit, rrpstatusdesc)
+
+		--Passive Device Peer
+		local passiveBit = getbit(buf:uint(), 11)
+		local passivestatusdesc = "...."..passiveBit.."...........".." = Passive Device (CPS) Peer : "..peerservices_status[passiveBit]
+		u:add(f_peerstatus, buf, passiveBit, passivestatusdesc)
+
+		--Virtual Site Peer
+		local virtualBit = getbit(buf:uint(), 10)
+		local virtualstatusdesc = "....."..virtualBit.."..........".." = Virtual Site Peer : "..peerservices_status[virtualBit]
+		u:add(f_peerstatus, buf, virtualBit, virtualstatusdesc)
+
+		--XNL Master Device
+		local xnlMasterBit = getbit(buf:uint(), 9)
+		local xnlMasterstatusdesc = "......"..xnlMasterBit..".........".." = XNL Master Device : "..peerservices_status[xnlMasterBit]
+		u:add(f_peerstatus, buf, xnlMasterBit, xnlMasterstatusdesc)
+
+		--XNL Slave Device
+		local xnlSlaveBit = getbit(buf:uint(), 8)
+		local xnlSlavestatusdesc = "......."..xnlSlaveBit.."........".." = XNL Slave Device : "..peerservices_status[xnlSlaveBit]
+		u:add(f_peerstatus, buf, xnlSlaveBit, xnlSlavestatusdesc)
+
+		--Remote 3rd Party Console Application
+		local consoleBit = getbit(buf:uint(), 7)
+		local consolestatusdesc = "........"..consoleBit..".......".." = Remote 3rd Party Console Application : "..peerservices_status[consoleBit]
+		u:add(f_peerstatus, buf, consoleBit, consolestatusdesc)
+
+		--Primary Intermediary
+		local intermBit = getbit(buf:uint(), 6)
+		local intermstatusdesc = "........."..intermBit.."......".." = Primary Intermediary : "..peerservices_status[intermBit]
+		u:add(f_peerstatus, buf, intermBit, intermstatusdesc)
+
+		--Peer Status
+		local peerstatus2= getbit(buf:uint(), 5)
+		local peerstatus1 = getbit(buf:uint(), 4)
+		local peerstat = peerstatus2*2 + peerstatus1
+		local peerstatusdesc = ".........."..peerstatus2..peerstatus1.."....".." = Peer Status : "..peerstatus[peerstat]
+		u:add(f_peerstatus, buf, peerstat, peerstatusdesc)
+
+		--Slot 1 Assignment
+		local slot1assign2 = getbit(buf:uint(), 3)
+		local slot1assign1 = getbit(buf:uint(), 2)
+		local slot1assign = slot1assign2*2 + slot1assign1
+		local slot1assigndesc = "............"..slot1assign2..slot1assign1.."..".." = Slot 1 Assignment : "..slotassignmentForLCP[slot1assign]
+		u:add(f_slot1assign, buf, slot1assign, slot1assigndesc)
+
+		--Slot 2 Assignment
+		local slot2assign2 = getbit(buf:uint(), 1)
+		local slot2assign1 = getbit(buf:uint(), 0)
+		local slot2assign = slot2assign2*2 + slot2assign1
+		local slot2assigndesc = ".............."..slot2assign2..slot2assign1.." = Slot 2 Assignment : "..slotassignmentForLCP[slot2assign]
+		u:add(f_slot2assign, buf, slot2assign, slot2assigndesc)
+
+    end
+	
+	 -- Peer Service
+        --   Displays the Peer Services bits
+        --   n = parse tree
+        --   buf = buffer
+        --   ind = 0 for 16 bit, 1 for 32 bit
+        --     lcp = 0 if NOT in LCP mode, 1 if it IS
+	function service_bits_disp(n, buf)
+		local v
+		local bit
+		local b
+		local temp
+
+		v = n:add(f_peerservices32, buf)
+		bit = 23
+		temp = 23
+
+		while bit >= 0 do
+			local service = getbit(buf:uint(), bit)
+			local servicedesc = ""
+			local skip_period = false
+			local service_sec_bit
+
+			b = temp
+			while b >= 0 do
+				if b ~= bit then
+					if (skip_period == false) then
+						servicedesc = servicedesc.."."
+					else
+						skip_period = false
+					end
+				else
+					servicedesc = servicedesc..service
+				end
+
+				if (b % 8) == 0 then
+					servicedesc = servicedesc .. " "
+				end
+
+				b = b - 1
+			end
+
+			if (peerservices[bit] ~= nil) then
+				servicedesc = servicedesc .. " = "..alarmTable[bit]
+			else
+				servicedesc = servicedesc.." = Reserved"
+			end
+
+			servicedesc = servicedesc .." : " ..peerservices_status[service]
+
+			v:add(f_peerstatus, buf, service, servicedesc)
+
+			bit = bit - 1
+		end
+	end
     
     -- Src of Calls decode
     function src_calls_decode(n,buf)
@@ -685,26 +869,23 @@ do
 				t:add(f_dbh_minhopcount, buf(6,1))
 				t:add(f_dbh_offset2TxBegin, buf(7,1))
 			elseif cmd == 0x1 then -- LE Beacon	
-				t:add(f_dbh_syncbeacon_num, buf(6,1))
+				child = t:add(f_dbh_syncbeacon_num, buf(6,1))
 				local num = buf(6,1):uint()
 				if num > 0 then
 					for i = 0, num-1, 1 do
-						local byte1 = buf(7+4*i,1):uint()
+						local byte1 = buf(7+8*i,1):uint()
 						
+						r = child:add(f_lebeacon_srcbrid, buf(8+8*i,2)) 
 						local hopcnt = bit.band(byte1, 0xf)
-						t:add(f_lebeacon_hopcnt, buf(7+4*i,1), hopcnt)
-						
+						r:add(f_lebeacon_hopcnt, buf(7+8*i,1), hopcnt)
 						local slot = bit.rshift(bit.band(byte1, 0x10), 4)
-						t:add(f_lebeacon_slot, buf(7+4*i,1), slot)
-						
+						r:add(f_lebeacon_slot, buf(7+8*i,1), slot)
 						local ofn = bit.rshift(bit.band(byte1, 0xE0), 5)
-						t:add(f_lebeacon_ofn, buf(7+4*i,1), ofn)
+						r:add(f_lebeacon_ofn, buf(7+8*i,1), ofn)
 						
-						t:add(f_lebeacon_srcbrid, buf(8+4*i,2)) 
-						mode_bits_disp_ipsc_cap(t, buf(10+4*i,2))
-						service_bits_disp(t, buf(12+4*i,3), 1, 0)
-						--t:add(f_lebeacon_modebit, buf(10+4*i,2))
-						--t:add(f_lebeacon_servicebit, buf(12+4*i,3))
+						mode_bits_disp(r, buf(10+8*i,2))
+						
+						service_bits_disp(r, buf(12+8*i,3))
 					end
 				end
 			end
