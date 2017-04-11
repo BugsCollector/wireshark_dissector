@@ -873,19 +873,19 @@ do
 				local num = buf(6,1):uint()
 				if num > 0 then
 					for i = 0, num-1, 1 do
-						local byte1 = buf(7+8*i,1):uint()
+						local byte1 = buf(7+9*i,1):uint()
 						
-						r = child:add(f_lebeacon_srcbrid, buf(8+8*i,2)) 
+						r = child:add(f_lebeacon_srcbrid, buf(8+9*i,3)) 
 						local hopcnt = bit.band(byte1, 0xf)
-						r:add(f_lebeacon_hopcnt, buf(7+8*i,1), hopcnt)
+						r:add(f_lebeacon_hopcnt, buf(7+9*i,1), hopcnt)
 						local slot = bit.rshift(bit.band(byte1, 0x10), 4)
-						r:add(f_lebeacon_slot, buf(7+8*i,1), slot)
+						r:add(f_lebeacon_slot, buf(7+9*i,1), slot)
 						local ofn = bit.rshift(bit.band(byte1, 0xE0), 5)
-						r:add(f_lebeacon_ofn, buf(7+8*i,1), ofn)
+						r:add(f_lebeacon_ofn, buf(7+9*i,1), ofn)
 						
-						mode_bits_disp(r, buf(10+8*i,2))
+						mode_bits_disp(r, buf(11+9*i,2))
 						
-						service_bits_disp(r, buf(12+8*i,3))
+						service_bits_disp(r, buf(13+9*i,3))
 					end
 				end
 			end
