@@ -26,7 +26,7 @@ do
 		    proto_type = 2
 		elseif pdu_id == 0xB2 then
         	proto_type = 3
-		elseif pdu_id >= 0xA0 then
+		elseif pdu_id >= 0xB0 then
 		    proto_type = 1
 		elseif pdu_id == 0x30 then -- Emerald
 		    user_define_dissector_name = "eml"	

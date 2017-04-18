@@ -28,9 +28,11 @@ do
 		[0xCD] = "P2P_CALL_REJECT",
 		[0xd0] = "NCS_REQUEST_PDU",
 		[0xd1] = "NCS_REPLY_PDU",
+		[0xE0] = "PROXY_CONNECT_REQ",
+		[0xE1] = "PROXY_CONNECT_RESP",
 		[0xF0] = "RAS_REQUEST",
         [0XF1] = "RAS_RESPONSE",
-		[0xf2] = "DBH_BEACON"
+		[0xf2] = "DBH_BEACON",
 	}
 
 	local p2p_pdu_len = {
@@ -60,6 +62,8 @@ do
 		[0xCD] = 14,
 		[0xd0] = 14,
 		[0xd1] = 30,
+		[0xE0] = 24,
+		[0xE1] = 14,
 		[0xF0] = 5,
         [0XF1] = 5,
 		[0xF2] = 6
@@ -91,6 +95,18 @@ do
         [0x02] = "RESERVED",
         [0x03] = "RESERVED"
     }
+	
+	connTypeTable = {
+		[0x00] = "TCP/IP",
+		[0x01] = "UDP/IP"
+	}
+	
+	ansRespTable = {
+		[0x00] = "Received Req successfully",
+		[0x01] = "Req not supported in target peer",
+		[0x02] = "Cannot serve the Req currently",
+		[0x03] = "Req not supported in this peer"
+	}
 	
 	alarmTable = {
         [0x00] = "Power Roll-back",
@@ -133,6 +149,13 @@ do
     local f_siteid = ProtoField.uint8("p2p.siteid", "Site Id", base.DEC)
     local f_restid = ProtoField.uint8("p2p.restid", "Rest Id", base.DEC)
     local f_peerid = ProtoField.uint32("p2p.peerid","Peer Id",base.DEC)
+	local f_originalpeerid = ProtoField.uint32("p2p.originpeerid","Original Peer Id",base.DEC)
+	local f_targetpeerid = ProtoField.uint32("p2p.targetpeerid","Target Peer Id",base.DEC)
+	local f_senderip = ProtoField.uint32("p2p.senderip","Sender IP",base.DEC)
+	local f_senderport = ProtoField.uint16("p2p.senderport","Sender Port",base.DEC)
+	local f_connType = ProtoField.uint8("p2p.conntype","Connection Type",base.DEC,connTypeTable)
+	local f_appServ = ProtoField.uint32("p2p.appserv","Application Service",base.HEX)
+	local f_ansresp = ProtoField.uint8("p2p.ansresp","Answer Response",base.DEC,ansRespTable)
     local f_srcpeerid = ProtoField.uint32("p2p.peerid","Source Peer ID",base.DEC)
     local f_srcsiteid = ProtoField.uint8("p2p.srcsiteid", "Source Site ID", base.DEC)
     local f_callsrcid = ProtoField.uint32("p2p.callsrcid", "Call Src ID", base.DEC)
@@ -261,7 +284,7 @@ do
 		f_peerservices,
 		f_peerservices32,
 		f_peermode,
-		f_peermode8}
+		f_peermode8, f_originalpeerid, f_targetpeerid, f_senderip, f_senderport, f_connType, f_appServ, f_ansresp}
         
     local audio_dis = Dissector.get("data")
         
@@ -288,80 +311,36 @@ do
     end
 	
 	--Peer Mode (for IPSC and CapPlus Systems)
-	function mode_bits_disp(n, buf)
-		local u = n:add(f_peermode, buf)
+	function mode_bits_disp_ipsc_cap(n, buf)
+            local u = n:add(f_peermode8, buf)
 
-		--Reserved Bit 15
-		local reserved15Bit = getbit(buf:uint(), 15)
-		local reserved15statusdesc = ""..reserved15Bit.."...............".." = Digital Voter Bit : "..peerservices_status[reserved15Bit]
-		u:add(f_peerstatus, buf, reserved15Bit, reserved15statusdesc)
+            --Peer Status
+            local peerstatus2 = getbit(buf:uint(), 7)
+            local peerstatus1 = getbit(buf:uint(), 6)
+            local peerstat = peerstatus2*2 + peerstatus1
+            local peerstatusdesc = "........"..peerstatus2..peerstatus1.."......".." = Peer Status : "..peerstatus[peerstat]
+            u:add(f_peerstatus, buf, peerstat, peerstatusdesc)
 
-		-- MOTOTRBO Gateway
-		local mototrbogatewayBit = getbit(buf:uint(), 14)
-		local mototrbogatewaystatusdesc = "."..mototrbogatewayBit.."..............".." = MOTOTRBO Gateway : "..peerservices_status[mototrbogatewayBit]
-		u:add(f_peerstatus, buf, mototrbogatewayBit, mototrbogatewaystatusdesc)
+            -- Current Signaling Mode
+            local sigmode2 =getbit(buf:uint(), 5)
+            local sigmode1 = getbit(buf:uint(), 4)
+            local sigmodestat = sigmode2*2 + sigmode1
+            local sigmodedesc = ".........."..sigmode2..sigmode1.."....".." = Signal Mode : "..signalingmode_status[sigmodestat]
+            u:add(f_signallingmode, buf, sigmodestat, sigmodedesc)
 
-		-- No LE w/ Data Revert
-		local nolewdatarevBit = getbit(buf:uint(), 13)
-		local nolewdatarevstatusdesc = ".."..nolewdatarevBit..".............".." = No LE w/ Data Revert : "..peerservices_status[nolewdatarevBit]
-		u:add(f_peerstatus, buf, nolewdatarevBit, nolewdatarevstatusdesc)
+            --Slot 1 Assignment
+            local slot1assign2 = getbit(buf:uint(), 3)
+            local slot1assign1 = getbit(buf:uint(), 2)
+            local slot1assign = slot1assign1 + slot1assign2*2
+            local slot1assigndesc = "............"..slot1assign2..slot1assign1.."..".." = Slot 1 Assignment : "..slotassignment[slot1assign]
+            u:add(f_slot1assign, buf, slot1assign, slot1assigndesc)
 
-		--Remote Programming Peer
-		local rrpBit = getbit(buf:uint(), 12)
-		local rrpstatusdesc = "..."..rrpBit.."............".." = Remote Programming Peer : "..peerservices_status[rrpBit]
-		u:add(f_peerstatus, buf, rrpBit, rrpstatusdesc)
-
-		--Passive Device Peer
-		local passiveBit = getbit(buf:uint(), 11)
-		local passivestatusdesc = "...."..passiveBit.."...........".." = Passive Device (CPS) Peer : "..peerservices_status[passiveBit]
-		u:add(f_peerstatus, buf, passiveBit, passivestatusdesc)
-
-		--Virtual Site Peer
-		local virtualBit = getbit(buf:uint(), 10)
-		local virtualstatusdesc = "....."..virtualBit.."..........".." = Virtual Site Peer : "..peerservices_status[virtualBit]
-		u:add(f_peerstatus, buf, virtualBit, virtualstatusdesc)
-
-		--XNL Master Device
-		local xnlMasterBit = getbit(buf:uint(), 9)
-		local xnlMasterstatusdesc = "......"..xnlMasterBit..".........".." = XNL Master Device : "..peerservices_status[xnlMasterBit]
-		u:add(f_peerstatus, buf, xnlMasterBit, xnlMasterstatusdesc)
-
-		--XNL Slave Device
-		local xnlSlaveBit = getbit(buf:uint(), 8)
-		local xnlSlavestatusdesc = "......."..xnlSlaveBit.."........".." = XNL Slave Device : "..peerservices_status[xnlSlaveBit]
-		u:add(f_peerstatus, buf, xnlSlaveBit, xnlSlavestatusdesc)
-
-		--Remote 3rd Party Console Application
-		local consoleBit = getbit(buf:uint(), 7)
-		local consolestatusdesc = "........"..consoleBit..".......".." = Remote 3rd Party Console Application : "..peerservices_status[consoleBit]
-		u:add(f_peerstatus, buf, consoleBit, consolestatusdesc)
-
-		--Primary Intermediary
-		local intermBit = getbit(buf:uint(), 6)
-		local intermstatusdesc = "........."..intermBit.."......".." = Primary Intermediary : "..peerservices_status[intermBit]
-		u:add(f_peerstatus, buf, intermBit, intermstatusdesc)
-
-		--Peer Status
-		local peerstatus2= getbit(buf:uint(), 5)
-		local peerstatus1 = getbit(buf:uint(), 4)
-		local peerstat = peerstatus2*2 + peerstatus1
-		local peerstatusdesc = ".........."..peerstatus2..peerstatus1.."....".." = Peer Status : "..peerstatus[peerstat]
-		u:add(f_peerstatus, buf, peerstat, peerstatusdesc)
-
-		--Slot 1 Assignment
-		local slot1assign2 = getbit(buf:uint(), 3)
-		local slot1assign1 = getbit(buf:uint(), 2)
-		local slot1assign = slot1assign2*2 + slot1assign1
-		local slot1assigndesc = "............"..slot1assign2..slot1assign1.."..".." = Slot 1 Assignment : "..slotassignmentForLCP[slot1assign]
-		u:add(f_slot1assign, buf, slot1assign, slot1assigndesc)
-
-		--Slot 2 Assignment
-		local slot2assign2 = getbit(buf:uint(), 1)
-		local slot2assign1 = getbit(buf:uint(), 0)
-		local slot2assign = slot2assign2*2 + slot2assign1
-		local slot2assigndesc = ".............."..slot2assign2..slot2assign1.." = Slot 2 Assignment : "..slotassignmentForLCP[slot2assign]
-		u:add(f_slot2assign, buf, slot2assign, slot2assigndesc)
-
+            --Slot 2 Assignment
+            local slot2assign2 = getbit(buf:uint(), 1)
+            local slot2assign1 = getbit(buf:uint(), 0)
+            local slot2assign = slot2assign1 + slot2assign2*2
+            local slot2assigndesc = ".............."..slot2assign2..slot2assign1.." = Slot 2 Assignment : "..slotassignment[slot2assign]
+            u:add(f_slot2assign, buf, slot2assign,slot2assigndesc)
     end
 	
 	 -- Peer Service
@@ -858,37 +837,58 @@ do
                 t:add(f_ncsslotboundtimestmp, buf(22,4))
                 t:add(f_ncshwtimer, buf(26,4))
 				
-	    elseif opid == 0xf2 then -- DBH_BEACON
-	    	t = root:add(p_p2p, buf(0, buf_len))
-			t:add(f_opcode, buf(0, 1))
-			peerid = buf(1,4):uint()
-			t:add(f_peerid, buf(1, 4))
-			t:add(f_dbh_syncbeacon_cmd, buf(5,1))
-			local cmd = buf(5,1):uint()
-			if cmd == 0x0 then	-- Start Beacon
-				t:add(f_dbh_minhopcount, buf(6,1))
-				t:add(f_dbh_offset2TxBegin, buf(7,1))
-			elseif cmd == 0x1 then -- LE Beacon	
-				child = t:add(f_dbh_syncbeacon_num, buf(6,1))
-				local num = buf(6,1):uint()
-				if num > 0 then
-					for i = 0, num-1, 1 do
-						local byte1 = buf(7+9*i,1):uint()
-						
-						r = child:add(f_lebeacon_srcbrid, buf(8+9*i,3)) 
-						local hopcnt = bit.band(byte1, 0xf)
-						r:add(f_lebeacon_hopcnt, buf(7+9*i,1), hopcnt)
-						local slot = bit.rshift(bit.band(byte1, 0x10), 4)
-						r:add(f_lebeacon_slot, buf(7+9*i,1), slot)
-						local ofn = bit.rshift(bit.band(byte1, 0xE0), 5)
-						r:add(f_lebeacon_ofn, buf(7+9*i,1), ofn)
-						
-						mode_bits_disp(r, buf(11+9*i,2))
-						
-						service_bits_disp(r, buf(13+9*i,3))
+			elseif opid == 0xe0 then
+				t = root:add(p_p2p, buf(0, 24))
+				t:add(f_opcode, buf(0, 1))
+                t:add(f_peerid, buf(1, 4))
+				peerid = buf(1,4):uint()
+				t:add(f_originalpeerid, buf(5, 4))
+				t:add(f_targetpeerid, buf(9, 4))
+				t:add(f_senderip, buf(13, 4))
+				t:add(f_senderport, buf(17, 2))
+				t:add(f_connType, buf(19,1))
+				t:add(f_appServ, buf(20,4))
+				
+			elseif opid == 0xe1 then
+				t = root:add(p_p2p, buf(0, 14))
+				t:add(f_opcode, buf(0, 1))
+                t:add(f_peerid, buf(1, 4))
+				peerid = buf(1,4):uint()
+				t:add(f_originalpeerid, buf(5, 4))
+				t:add(f_targetpeerid, buf(9, 4))
+				t:add(f_ansresp, buf(13,1))
+				
+			elseif opid == 0xf2 then -- DBH_BEACON
+				t = root:add(p_p2p, buf(0, buf_len))
+				t:add(f_opcode, buf(0, 1))
+				peerid = buf(1,4):uint()
+				t:add(f_peerid, buf(1, 4))
+				t:add(f_dbh_syncbeacon_cmd, buf(5,1))
+				local cmd = buf(5,1):uint()
+				if cmd == 0x0 then	-- Start Beacon
+					t:add(f_dbh_minhopcount, buf(6,1))
+					t:add(f_dbh_offset2TxBegin, buf(7,1))
+				elseif cmd == 0x1 then -- LE Beacon	
+					child = t:add(f_dbh_syncbeacon_num, buf(6,1))
+					local num = buf(6,1):uint()
+					if num > 0 then
+						for i = 0, num-1, 1 do
+							local byte1 = buf(7+8*i,1):uint()
+							
+							r = child:add(f_lebeacon_srcbrid, buf(8+8*i,3)) 
+							local hopcnt = bit.band(byte1, 0xf)
+							r:add(f_lebeacon_hopcnt, buf(7+8*i,1), hopcnt)
+							local slot = bit.rshift(bit.band(byte1, 0x10), 4)
+							r:add(f_lebeacon_slot, buf(7+8*i,1), slot)
+							local ofn = bit.rshift(bit.band(byte1, 0xE0), 5)
+							r:add(f_lebeacon_ofn, buf(7+8*i,1), ofn)
+							
+							mode_bits_disp_ipsc_cap(r, buf(11+8*i,1))
+							
+							service_bits_disp(r, buf(12+8*i,3))
+						end
 					end
 				end
-			end
 			end
         end
             
@@ -903,11 +903,11 @@ do
 		        )
         end
         
-	if info ~= nil then
-		if (p2p_pdu_len[opid] ~= nil) and (buf_len < p2p_pdu_len[opid]) then
-			info	= info .. "	Wrong message length!"
+		if info ~= nil then
+			if (p2p_pdu_len[opid] ~= nil) and (buf_len < p2p_pdu_len[opid]) then
+				info	= info .. "	Wrong message length!"
+			end
 		end
-	end
         
        	if info ~= nil then
         	pkt.cols.info:set(info)
