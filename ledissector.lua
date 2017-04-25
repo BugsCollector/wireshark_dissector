@@ -120,6 +120,46 @@ do
 
     }
 	
+	alarmTable = {
+        [0x00] = "Power Roll-back",
+        [0x01] = "Battery",
+        [0x02] = "Over Temperature",
+        [0x03] = "VSWR Alarm",
+        [0x04] = "Fan Alarm",
+        [0x05] = "Power Supply",
+        [0x06] = "User Defined 1",
+        [0x07] = "User Defined 2",
+        [0x08] = "User Defined 3",
+        [0x09] = "User Defined 4",
+        [0x0A] = "User Defined 5",
+        [0x0B] = "User Defined 6",
+        [0x0C] = "Battery Revert",
+        [0x0D] = "RESERVED",
+        [0x0E] = "RESERVED",
+        [0x0F] = "RESERVED",
+        [0x10] = "Drop/Link",
+        [0x11] = "Abaco/Andros/Inagua",
+        [0x12] = "Abaco/Andros/Inagua",
+        [0x13] = "RESERVED",
+        [0x14] = "RESERVED",
+        [0x15] = "RESERVED",
+        [0x16] = "RESERVED",
+        [0x17] = "RESERVED",
+
+    }
+	
+	rptrtypeTable = {
+		[0x00] = "Andors",
+		[0x01] = "Abaco",
+		[0x02] = "Inagua",
+		[0x03] = "Unknown"
+	}
+	
+	droplinkTable = {
+		[0x00] = "Link",
+		[0x01] = "Drop"
+	}
+	
 	local slot_num_table = {
 		[0x00] = "SLOT_ONE",
 		[0x01] = "SLOT_TWO",
@@ -151,6 +191,11 @@ do
         [0x02] = "RESERVED",
         [0x03] = "RESERVED"
     }
+	
+	alarm_status = {
+		[0x1] = "Alarmed",
+		[0x0] = "Clear"
+	}
 
     signalingmode_status = {
         [0x00] = "No RF Support",
@@ -1030,6 +1075,83 @@ do
                 peer_index = peer_index + 1
             end
         end
+		
+		-- Peer Service
+		--   Displays the Peer Services bits
+		--   n = parse tree
+		--   buf = buffer
+		function dbh_rdac_service_bits_disp(n, buf)
+			local v
+			local bit
+			local b
+			local temp
+
+			v = n:add(f_peerservices32, buf)
+			bit = 23
+			temp = 23
+
+			while bit >= 0 do
+				local service = getbit(buf:uint(), bit)
+				local servicedesc = "........ "
+				local skip_period = false
+				local service_sec_bit
+
+				b = temp
+				while b >= 0 do
+					if b ~= bit then
+						if (skip_period == false) then
+							servicedesc = servicedesc.."."
+						else
+							skip_period = false
+						end
+					else
+						if (bit == 18) then
+							service_sec_bit = getbit(buf:uint(), bit-1)
+                            servicedesc = servicedesc..service..service_sec_bit
+                            skip_period = true
+						else
+							servicedesc = servicedesc..service
+						end
+					end
+
+					if (b % 8) == 0 then
+						servicedesc = servicedesc .. " "
+					end
+
+					b = b - 1
+				end
+
+				if (bit == 18) then
+					servicedesc = servicedesc .. " = Repeater Type"
+				elseif (bit == 16) then
+					servicedesc = servicedesc .. " = "..alarmTable[bit]..": "..droplinkTable[service]
+				else
+					if (alarmTable[bit] ~= nil) then
+						servicedesc = servicedesc .. " = "..alarmTable[bit] 
+					else
+						servicedesc = servicedesc.." = Reserved"
+					end
+				end
+				
+				if (bit == 18) then
+					local stat1 = service
+                    local stat2 = service_sec_bit
+                    bit = bit - 1
+                    local stat = stat1*2 + stat2
+                    if(rptrtypeTable[stat] ~= nil) then
+                        servicedesc = servicedesc .. " : "..rptrtypeTable[stat]
+                    else
+                        servicedesc = servicedesc .." : "  .. "Unknown Repeater Type: ".. stat
+                    end
+				elseif (bit <= 0xC) then
+					servicedesc = servicedesc .." : " ..alarm_status[service]
+				end
+					
+				v:add(f_peerstatus, buf, servicedesc)
+
+				bit = bit - 1
+			end
+		end
 
         if buf_len >= (le_pdu_len[opid] - 1) then
 
@@ -1370,7 +1492,7 @@ do
 				t:add(f_role, buf(9,1))
 				t:add(f_brstate,buf(10,1))
 				mode_bits_disp_ipsc_cap(t, buf(11,1))
-				service_bits_disp(t, buf(12, 4), 1, 0)
+				dbh_rdac_service_bits_disp(t, buf(12, 4))
 				t:add(f_slot1state,buf(16,1))
 				t:add(f_slot2state,buf(17,1))
 				t:add(f_forknum, buf(18,1))

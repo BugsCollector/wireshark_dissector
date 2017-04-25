@@ -126,8 +126,8 @@ do
         [0x0E] = "RESERVED",
         [0x0F] = "RESERVED",
         [0x10] = "Drop/Link",
-        [0x11] = "RESERVED",
-        [0x12] = "RESERVEDr",
+        [0x11] = "Abaco/Andros/Inagua",
+        [0x12] = "Abaco/Andros/Inagua",
         [0x13] = "RESERVED",
         [0x14] = "RESERVED",
         [0x15] = "RESERVED",
@@ -135,6 +135,18 @@ do
         [0x17] = "RESERVED",
 
     }
+	
+	rptrtypeTable = {
+		[0x00] = "Andors",
+		[0x01] = "Abaco",
+		[0x02] = "Inagua",
+		[0x03] = "Unknown"
+	}
+	
+	droplinkTable = {
+		[0x00] = "Link",
+		[0x01] = "Drop"
+	}
 	
 	local f_slot2assign = ProtoField.uint8("le.slot2assign", "Slot 2 Assignement", base.HEX)
     local f_slot1assign = ProtoField.uint8("le.slot1assign", "Slot 1 Assignement", base.HEX)
@@ -343,61 +355,83 @@ do
             u:add(f_slot2assign, buf, slot2assign,slot2assigndesc)
     end
 	
-	 -- Peer Service
-        --   Displays the Peer Services bits
-        --   n = parse tree
-        --   buf = buffer
-        --   ind = 0 for 16 bit, 1 for 32 bit
-        --     lcp = 0 if NOT in LCP mode, 1 if it IS
-	function service_bits_disp(n, buf)
-		local v
-		local bit
-		local b
-		local temp
+	-- Peer Service
+		--   Displays the Peer Services bits
+		--   n = parse tree
+		--   buf = buffer
+		function dbh_rdac_service_bits_disp(n, buf)
+			local v
+			local bit
+			local b
+			local temp
 
-		v = n:add(f_peerservices32, buf)
-		bit = 23
-		temp = 23
+			v = n:add(f_peerservices32, buf)
+			bit = 23
+			temp = 23
 
-		while bit >= 0 do
-			local service = getbit(buf:uint(), bit)
-			local servicedesc = ""
-			local skip_period = false
-			local service_sec_bit
+			while bit >= 0 do
+				local service = getbit(buf:uint(), bit)
+				local servicedesc = ""
+				local skip_period = false
+				local service_sec_bit
 
-			b = temp
-			while b >= 0 do
-				if b ~= bit then
-					if (skip_period == false) then
-						servicedesc = servicedesc.."."
+				b = temp
+				while b >= 0 do
+					if b ~= bit then
+						if (skip_period == false) then
+							servicedesc = servicedesc.."."
+						else
+							skip_period = false
+						end
 					else
-						skip_period = false
+						if (bit == 18) then
+							service_sec_bit = getbit(buf:uint(), bit-1)
+                            servicedesc = servicedesc..service..service_sec_bit
+                            skip_period = true
+						else
+							servicedesc = servicedesc..service
+						end
 					end
+
+					if (b % 8) == 0 then
+						servicedesc = servicedesc .. " "
+					end
+
+					b = b - 1
+				end
+
+				if (bit == 18) then
+					servicedesc = servicedesc .. " = Repeater Type"
+				elseif (bit == 16) then
+					servicedesc = servicedesc .. " = "..alarmTable[bit]..": "..droplinkTable[service]
 				else
-					servicedesc = servicedesc..service
+					if (alarmTable[bit] ~= nil) then
+						servicedesc = servicedesc .. " = "..alarmTable[bit] 
+					else
+						servicedesc = servicedesc.." = Reserved"
+					end
 				end
-
-				if (b % 8) == 0 then
-					servicedesc = servicedesc .. " "
+				
+				if (bit == 18) then
+					local stat1 = service
+                    local stat2 = service_sec_bit
+                    bit = bit - 1
+                    local stat = stat1*2 + stat2
+                    if(rptrtypeTable[stat] ~= nil) then
+                        servicedesc = servicedesc .. " : "..rptrtypeTable[stat]
+                    else
+                        servicedesc = servicedesc .." : "  .. "Unknown Repeater Type: ".. stat
+                    end
+				elseif (bit <= 0xC) then
+					servicedesc = servicedesc .." : " ..alarm_status[service]
 				end
+					
+				v:add(f_peerstatus, buf, service, servicedesc)
 
-				b = b - 1
+				bit = bit - 1
 			end
-
-			if (peerservices[bit] ~= nil) then
-				servicedesc = servicedesc .. " = "..alarmTable[bit]
-			else
-				servicedesc = servicedesc.." = Reserved"
-			end
-
-			servicedesc = servicedesc .." : " ..peerservices_status[service]
-
-			v:add(f_peerstatus, buf, service, servicedesc)
-
-			bit = bit - 1
 		end
-	end
-    
+	
     -- Src of Calls decode
     function src_calls_decode(n,buf)
         local bit = 1
@@ -885,7 +919,7 @@ do
 							
 							mode_bits_disp_ipsc_cap(r, buf(11+8*i,1))
 							
-							service_bits_disp(r, buf(12+8*i,3))
+							dbh_rdac_service_bits_disp(r, buf(12+8*i,3))
 						end
 					end
 				end
