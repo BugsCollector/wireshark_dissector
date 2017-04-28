@@ -83,7 +83,7 @@ do
 		local f_nulllc = ProtoField.uint8("f2burstdata.nullc", "NULL LC", base.HEX)
 		local f_emblc72 = ProtoField.uint8("f2burstdata.emblc72", "72-bit EMB LC", base.HEX)
 		local f_slottypebit = ProtoField.uint8("f2burstdata.slottypebit", "Slot Type", base.HEX)
-		--local f_embbit = ProtoField.uint8("f2burstdata.emb", "EMB", base.HEX)
+		local f_embbit = ProtoField.bytes("f2burstdata.emb", "EMB", base.HEX)
 		local f_sync = ProtoField.uint8("f2burstdata.sync", "Sync", base.HEX)
 		---------------------------------------------------------------end of EMB SIG BITs definition
 

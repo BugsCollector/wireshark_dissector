@@ -805,6 +805,8 @@ do
                 -- RCM Call Transmission opcode
                 if buf_len == 26 then
                     t = root:add(p_p2p, buf(0, 26))
+				else
+					t = root
                 end
             
                 t:add(f_opcode,	buf(0, 1))
